@@ -1,0 +1,1 @@
+chrome.runtime.onInstalled.addListener(function(){console.log("Open Notas extension installed")}),chrome.runtime.onMessage.addListener(function(e,o,n){return"getNotes"===e.action?(chrome.storage.local.get(["notes"],function(e){n({notes:e.notes||[]})}),!0):"saveNotes"===e.action?(chrome.storage.local.set({notes:e.data},function(){n({success:!0})}),!0):void 0});
