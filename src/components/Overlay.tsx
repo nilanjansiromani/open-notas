@@ -7,6 +7,8 @@ interface Todo {
   id: string;
   text: string;
   completed: boolean;
+  pageUrl?: string;
+  pageTitle?: string;
 }
 
 interface Note {
@@ -40,6 +42,12 @@ const NoteOverlay: React.FC = () => {
         setTodos(loadedNotes[0].todos || []);
       } else {
         createNewNote();
+      }
+
+      // Check if we have selected data to add
+      const selectedData = (window as any).__openNotasSelectedData;
+      if (selectedData && selectedData.text) {
+        addTodoFromSelection(selectedData.text, selectedData.pageUrl, selectedData.pageTitle);
       }
     });
   }, []);
@@ -111,6 +119,30 @@ const NoteOverlay: React.FC = () => {
     }
     
     (chrome as any).storage.local.set({ notes: updatedNotes });
+  };
+
+  const addTodoFromSelection = (text: string, pageUrl?: string, pageTitle?: string) => {
+    if (!currentNote) return;
+    
+    const newTodo: Todo = {
+      id: Date.now().toString(),
+      text,
+      completed: false,
+      pageUrl,
+      pageTitle,
+    };
+    
+    const updatedTodos = [newTodo, ...todos];
+    setTodos(updatedTodos);
+    
+    const updatedNote = {
+      ...currentNote,
+      todos: updatedTodos,
+      updatedAt: Date.now(),
+    };
+    
+    setCurrentNote(updatedNote);
+    saveNote(updatedNote);
   };
 
   const addTodo = () => {
@@ -211,9 +243,21 @@ const NoteOverlay: React.FC = () => {
                 onChange={() => toggleTodo(todo.id)}
                 className="on-todo-checkbox"
               />
-              <span className={`on-todo-text ${todo.completed ? 'completed' : ''}`}>
-                {todo.text}
-              </span>
+              <div className="on-todo-content">
+                <span className={`on-todo-text ${todo.completed ? 'completed' : ''}`}>
+                  {todo.text}
+                </span>
+                {todo.pageUrl && (
+                  <a
+                    href={todo.pageUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="on-todo-link"
+                  >
+                    {todo.pageTitle || 'Source'}
+                  </a>
+                )}
+              </div>
               <button
                 className="on-todo-delete"
                 onClick={() => deleteTodo(todo.id)}
@@ -268,7 +312,7 @@ const NoteOverlay: React.FC = () => {
               </span>
               <button
                 className="on-note-delete"
-                onClick={(e) => {
+                onClick={(e: any) => {
                   e.stopPropagation();
                   deleteNote(note.id);
                 }}

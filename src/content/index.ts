@@ -1,12 +1,130 @@
 // Content Script - Listens for keyboard shortcut and injects overlay
 
-// Listen for Ctrl+Shift+N keyboard shortcut
-document.addEventListener('keydown', (event: KeyboardEvent) => {
-  if (event.ctrlKey && event.shiftKey && event.code === 'KeyN') {
-    event.preventDefault();
+let selectedText = '';
+let selectedData: any = null;
+
+// Listen for messages from background script
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'toggleOverlay') {
     toggleOverlay();
   }
+  
+  if (request.action === 'addSelectedText') {
+    selectedData = {
+      text: request.selectedText,
+      pageUrl: request.pageUrl,
+      pageTitle: request.pageTitle,
+    };
+    showSelectionPopup(request.selectedText, request.pageUrl, request.pageTitle);
+  }
 });
+
+// Create floating button
+function createFloatingButton() {
+  if (document.getElementById('open-notas-float-btn')) {
+    return; // Already exists
+  }
+
+  const floatingBtn = document.createElement('button');
+  floatingBtn.id = 'open-notas-float-btn';
+  floatingBtn.innerHTML = '📝';
+  floatingBtn.style.cssText = `
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-size: 28px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 999998;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  `;
+
+  floatingBtn.onmouseenter = function(e: any) {
+    e.target.style.transform = 'scale(1.1)';
+    e.target.style.boxShadow = '0 6px 20px rgba(0, 0, 0, 0.25)';
+  };
+
+  floatingBtn.onmouseleave = function(e: any) {
+    e.target.style.transform = 'scale(1)';
+    e.target.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';
+  };
+
+  floatingBtn.onclick = toggleOverlay;
+  document.body.appendChild(floatingBtn);
+}
+
+// Show selection popup
+function showSelectionPopup(text: string, pageUrl: string, pageTitle: string) {
+  if (document.getElementById('on-selection-popup')) {
+    document.getElementById('on-selection-popup')?.remove();
+  }
+
+  const popup = document.createElement('div');
+  popup.id = 'on-selection-popup';
+  popup.style.cssText = `
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    z-index: 999999;
+    padding: 24px;
+    max-width: 400px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  `;
+
+  popup.innerHTML = `
+    <div style="margin-bottom: 16px;">
+      <p style="margin: 0 0 8px 0; color: #666; font-size: 12px; text-transform: uppercase; font-weight: 600;">Selected Text</p>
+      <p style="margin: 0; padding: 12px; background: #f5f5f5; border-radius: 6px; font-size: 14px; color: #333; max-height: 100px; overflow-y: auto;">
+        "${text}"
+      </p>
+    </div>
+    <div style="margin-bottom: 16px;">
+      <p style="margin: 0 0 8px 0; color: #666; font-size: 12px; text-transform: uppercase; font-weight: 600;">From Page</p>
+      <p style="margin: 0; font-size: 13px; color: #007bff; word-break: break-all;">
+        <a href="${pageUrl}" target="_blank" style="color: #007bff; text-decoration: none;">${pageTitle || pageUrl}</a>
+      </p>
+    </div>
+    <div style="display: flex; gap: 8px;">
+      <button id="add-selection-btn" style="flex: 1; padding: 10px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 14px;">Add to Notes</button>
+      <button id="cancel-selection-btn" style="flex: 1; padding: 10px; background: #e0e0e0; color: #333; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 14px;">Cancel</button>
+    </div>
+  `;
+
+  document.body.appendChild(popup);
+
+  document.getElementById('add-selection-btn')!.onclick = () => {
+    // Send to background to add to notes
+    chrome.runtime.sendMessage({
+      action: 'addTodoFromSelection',
+      data: {
+        text,
+        pageUrl,
+        pageTitle,
+      },
+    });
+    popup.remove();
+    // Open overlay
+    toggleOverlay();
+  };
+
+  document.getElementById('cancel-selection-btn')!.onclick = () => {
+    popup.remove();
+  };
+}
 
 function toggleOverlay() {
   let overlay = document.getElementById('open-notas-overlay');
@@ -36,6 +154,9 @@ function toggleOverlay() {
     
     document.body.appendChild(overlayContainer);
     
+    // Pass selected data to overlay
+    (window as any).__openNotasSelectedData = selectedData;
+    
     // Load and inject the overlay UI
     const script = document.createElement('script');
     script.src = (window as any).chrome.runtime.getURL('overlay.js');
@@ -53,4 +174,11 @@ function toggleOverlay() {
     link.href = (window as any).chrome.runtime.getURL('overlay.css');
     document.head.appendChild(link);
   }
+}
+
+// Initialize floating button when page loads
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', createFloatingButton);
+} else {
+  createFloatingButton();
 }

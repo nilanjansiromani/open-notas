@@ -3,7 +3,7 @@
   "name": "Open Notas",
   "version": "1.0.0",
   "description": "A lightweight note-taking overlay extension with Tiptap editor",
-  "permissions": ["storage"],
+  "permissions": ["storage", "contextMenus"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"
@@ -20,5 +20,14 @@
       "resources": ["overlay.js", "overlay.js.map", "overlay.css"],
       "matches": ["<all_urls>"]
     }
-  ]
+  ],
+  "commands": {
+    "toggle-overlay": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+N",
+        "mac": "Command+Shift+N"
+      },
+      "description": "Toggle Open Notas overlay"
+    }
+  }
 }
