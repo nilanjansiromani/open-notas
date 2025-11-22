@@ -19,6 +19,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
+// Listen for messages from overlay (postMessage)
+window.addEventListener('message', (event) => {
+  if (event.source !== window) return;
+  
+  if (event.data.type === 'GET_NOTES') {
+    chrome.storage.local.get(['notes'], (result: any) => {
+      window.postMessage({
+        type: 'NOTES_DATA',
+        notes: result.notes || [],
+      }, '*');
+    });
+  }
+  
+  if (event.data.type === 'SAVE_NOTES') {
+    chrome.storage.local.set({ notes: event.data.notes }, () => {
+      console.log('Notes saved from overlay');
+    });
+  }
+});
+
 // Create floating button
 function createFloatingButton() {
   if (document.getElementById('open-notas-float-btn')) {
@@ -107,15 +127,6 @@ function showSelectionPopup(text: string, pageUrl: string, pageTitle: string) {
   document.body.appendChild(popup);
 
   document.getElementById('add-selection-btn')!.onclick = () => {
-    // Send to background to add to notes
-    chrome.runtime.sendMessage({
-      action: 'addTodoFromSelection',
-      data: {
-        text,
-        pageUrl,
-        pageTitle,
-      },
-    });
     popup.remove();
     // Open overlay
     toggleOverlay();
@@ -159,7 +170,7 @@ function toggleOverlay() {
     
     // Load and inject the overlay UI
     const script = document.createElement('script');
-    script.src = (window as any).chrome.runtime.getURL('overlay.js');
+    script.src = chrome.runtime.getURL('overlay.js');
     script.addEventListener('load', function() {
       const parent = script.parentNode;
       if (parent) {
@@ -171,7 +182,7 @@ function toggleOverlay() {
     // Load styles
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = (window as any).chrome.runtime.getURL('overlay.css');
+    link.href = chrome.runtime.getURL('overlay.css');
     document.head.appendChild(link);
   }
 }

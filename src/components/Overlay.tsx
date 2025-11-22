@@ -19,6 +19,55 @@ interface Note {
   updatedAt: number;
 }
 
+// Helper to send messages to background script
+const sendMessage = (message: any) => {
+  return new Promise((resolve) => {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage(message, '*');
+    }
+    // Also try chrome runtime if available
+    if (typeof (window as any).chrome !== 'undefined' && (window as any).chrome.runtime) {
+      (window as any).chrome.runtime.sendMessage(message, resolve);
+    }
+  });
+};
+
+// Get notes from localStorage or background
+const loadNotes = async (): Promise<Note[]> => {
+  try {
+    // First try to get from parent window (content script)
+    return new Promise((resolve) => {
+      const listener = (event: MessageEvent) => {
+        if (event.data.type === 'NOTES_DATA') {
+          window.removeEventListener('message', listener);
+          resolve(event.data.notes);
+        }
+      };
+      window.addEventListener('message', listener);
+      window.parent.postMessage({ type: 'GET_NOTES' }, '*');
+      
+      // Fallback to localStorage
+      setTimeout(() => {
+        window.removeEventListener('message', listener);
+        const stored = localStorage.getItem('openNotasNotes');
+        resolve(stored ? JSON.parse(stored) : []);
+      }, 1000);
+    });
+  } catch (e) {
+    const stored = localStorage.getItem('openNotasNotes');
+    return stored ? JSON.parse(stored) : [];
+  }
+};
+
+// Save notes to localStorage and background
+const saveNotesToStorage = async (notes: Note[]) => {
+  localStorage.setItem('openNotasNotes', JSON.stringify(notes));
+  // Try to sync with background
+  if (window.parent && window.parent !== window) {
+    window.parent.postMessage({ type: 'SAVE_NOTES', notes }, '*');
+  }
+};
+
 const NoteOverlay: React.FC = () => {
   const [notes, setNotes] = useState<Note[]>([]);
   const [currentNote, setCurrentNote] = useState<Note | null>(null);
@@ -31,10 +80,9 @@ const NoteOverlay: React.FC = () => {
     content: '<p></p>',
   });
 
-  // Load notes from Chrome storage on mount
+  // Load notes on mount
   useEffect(() => {
-    (chrome as any).storage.local.get(['notes'], (result: any) => {
-      const loadedNotes = result.notes || [];
+    loadNotes().then((loadedNotes) => {
       setNotes(loadedNotes);
       
       if (loadedNotes.length > 0) {
@@ -46,7 +94,7 @@ const NoteOverlay: React.FC = () => {
 
       // Check if we have selected data to add
       const selectedData = (window as any).__openNotasSelectedData;
-      if (selectedData && selectedData.text) {
+      if (selectedData && selectedData.text && loadedNotes.length > 0) {
         addTodoFromSelection(selectedData.text, selectedData.pageUrl, selectedData.pageTitle);
       }
     });
@@ -91,7 +139,11 @@ const NoteOverlay: React.FC = () => {
     
     setCurrentNote(newNote);
     setTodos([]);
-    setNotes((prev) => [newNote, ...prev]);
+    setNotes((prev) => {
+      const updated = [newNote, ...prev];
+      saveNotesToStorage(updated);
+      return updated;
+    });
   };
 
   const saveNote = (note: Note) => {
@@ -100,10 +152,7 @@ const NoteOverlay: React.FC = () => {
       updatedNotes.unshift(note);
     }
     setNotes(updatedNotes);
-    
-    (chrome as any).storage.local.set({ notes: updatedNotes }, () => {
-      console.log('Notes saved');
-    });
+    saveNotesToStorage(updatedNotes);
   };
 
   const deleteNote = (noteId: string) => {
@@ -118,7 +167,7 @@ const NoteOverlay: React.FC = () => {
       }
     }
     
-    (chrome as any).storage.local.set({ notes: updatedNotes });
+    saveNotesToStorage(updatedNotes);
   };
 
   const addTodoFromSelection = (text: string, pageUrl?: string, pageTitle?: string) => {
